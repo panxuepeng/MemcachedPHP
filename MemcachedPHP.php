@@ -22,6 +22,7 @@ class MemcachedPHP {
 	}
 	
 	public function set($key, $value, $expire = 2592000){
+		$value = serialize($value);
 		$bytes = self::tobytes($value);
 		$expire = (int)$expire;
 		$command = "set <#key#> <#flags#> <#exptime#> <#bytes#>\r\n<#value#>\r\n";
@@ -37,8 +38,11 @@ class MemcachedPHP {
 	public function get($key){
 		$result = $this->command(sprintf("get %s\r\n", preg_replace('/[\r\n]+/', '', $key)));
 		
-		if(preg_match('/VALUE\s([^\n]+)\r\n(.*)\r\nEND/', $result, $match)){
-			return $match[2];
+		if(preg_match('/^VALUE\s([^\n\s]+)\s([0-9]+)\s([^\n\s]+)\r\n(.*)\r\nEND[\n\r]*$/', $result, $match)){
+			$is_serialized = (int)$match[2];
+			$value = $match[4];
+			if($is_serialized) $value = unserialize($value);
+			return $value;
 		}
 		
 		return false;
@@ -63,6 +67,10 @@ class MemcachedPHP {
 		}
 		
 		return rtrim($return);
+	}
+	
+	public static function serialized($str){
+		return ($str == serialize(false) || @unserialize($str) !== false);
 	}
 	
 	public static function tobytes($str){
