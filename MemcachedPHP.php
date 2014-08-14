@@ -21,13 +21,35 @@ class MemcachedPHP {
 		$this->socket();
 	}
 	
-	public function set($key, $value, $expire = 2592000){
-		$value = serialize($value);
+	public function set($key, $value, $expire = 300){
+		$flag = 0;
+		
+		switch(gettype($value)){
+			case 'boolean': 
+				$flag = 256;
+				$value = (int)$value;
+				break;
+			case 'integer':
+				$flag = 768;
+				break;
+			case 'float':
+			case 'double':
+				$flag = 1792;
+				break;
+			case 'array':
+			case 'object':
+			case 'resource':
+			case 'NULL':
+				$flag = 1;
+				$value = serialize($value);
+				break;
+		}
+		
 		$bytes = self::tobytes($value);
 		$expire = (int)$expire;
 		$command = "set <#key#> <#flags#> <#exptime#> <#bytes#>\r\n<#value#>\r\n";
 		$command = str_replace('<#key#>', $key, $command);
-		$command = str_replace('<#flags#>', 0, $command);
+		$command = str_replace('<#flags#>', $flag, $command);
 		$command = str_replace('<#exptime#>', $expire, $command);
 		$command = str_replace('<#bytes#>', $bytes, $command);
 		$command = str_replace('<#value#>', $value, $command);
@@ -39,9 +61,12 @@ class MemcachedPHP {
 		$result = $this->command(sprintf("get %s\r\n", preg_replace('/[\r\n]+/', '', $key)));
 		
 		if(preg_match('/^VALUE\s([^\n\s]+)\s([0-9]+)\s([^\n\s]+)\r\n(.*)\r\nEND[\n\r]*$/', $result, $match)){
-			$is_serialized = (int)$match[2];
+			$flag = (int)$match[2];
 			$value = $match[4];
-			if($is_serialized) $value = unserialize($value);
+			if($flag == 1) $value = unserialize($value);
+			if($flag == 256) $value = (boolean)intval($value);
+			if($flag == 768) $value = (int)$value;
+			if($flag == 1792) $value = (float)$value;
 			return $value;
 		}
 		
